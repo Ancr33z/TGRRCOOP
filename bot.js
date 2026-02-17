@@ -36,8 +36,8 @@ function buildBot({ token, spreadsheetId, adminTgId, publicName }) {
   const SSID = spreadsheetId;
   // Hardcoded destination for "someone requests coop" notifications.
   // Set your supergroup id (e.g. -1001234567890) and forum topic id.
-  const COOP_NOTIFY_CHAT_ID = -1001234567890;
-  const COOP_NOTIFY_THREAD_ID = 1;
+  const COOP_NOTIFY_CHAT_ID = -1003891003055;
+  const COOP_NOTIFY_THREAD_ID = null;
 
   async function tg(method, payload) {
     return axios.post(`${TG}/${method}`, payload);
@@ -476,7 +476,7 @@ function buildBot({ token, spreadsheetId, adminTgId, publicName }) {
       await notifyAdminCoopRequest(tgId);
       await sendMessage(
         chatId,
-        "Готово ✅ Ты в очереди на кооп.\nСокланы смогут откликнуться через «Ответить на кооп».",
+        "Поставил тебя в очередь на кооп ✅\nКак только кто-то откликнется, дам знать.",
         await kbFor(tgId)
       );
       return;
