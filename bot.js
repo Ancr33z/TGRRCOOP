@@ -18,6 +18,7 @@ const SHEETS = {
 const REQUEST_STATUS = { OPEN: "OPEN", MATCHED: "MATCHED", CLOSED: "CLOSED" };
 const RESPONSE_STATUS = { PENDING: "PENDING", ACCEPTED: "ACCEPTED", REJECTED: "REJECTED" };
 const STATE = { NONE: "NONE" };
+const REPEAT_RESPONSE_COOLDOWN_MS = 10 * 60 * 1000;
 
 const CB = {
   REQUEST_COOP: "REQ_COOP",
@@ -245,6 +246,9 @@ function buildBot({ token, spreadsheetId, adminTgId, publicName }) {
     );
     if (!row.length) return;
     const { map, rowIndex1 } = row[0];
+    if (map.created_at !== undefined) {
+      await updateCell_(SSID, `${SHEETS.RESPONSES}!${col_(map.created_at)}${rowIndex1}`, nowIso_());
+    }
     await updateCell_(SSID, `${SHEETS.RESPONSES}!${col_(map.status)}${rowIndex1}`, status);
   }
 
@@ -279,7 +283,11 @@ function buildBot({ token, spreadsheetId, adminTgId, publicName }) {
     for (const x of rows) {
       await updateCell_(SSID, `${SHEETS.RESPONSES}!${col_(x.map.status)}${x.rowIndex1}`, RESPONSE_STATUS.REJECTED);
       const responderId = String(x.obj.responder_id);
-      await sendMessage(responderId, reasonText || "Не получилось законнектиться 😕", await kbFor(responderId));
+      try {
+        await sendMessage(responderId, reasonText || "Не получилось законнектиться 😕", await kbFor(responderId));
+      } catch (e) {
+        console.error("Reject notify failed:", responderId, e?.response?.data || e?.message || e);
+      }
     }
   }
 
@@ -293,11 +301,15 @@ function buildBot({ token, spreadsheetId, adminTgId, publicName }) {
       const st = String(x.obj.status);
       if (rid === String(acceptedResponderId)) continue;
       if (st === RESPONSE_STATUS.REJECTED) {
-        await sendMessage(
-          rid,
-          "Не получилось законнектиться 😕\nПохоже, игрок выбрал другого. Попробуй ещё раз — сейчас точно найдёмся!",
-          await kbFor(rid)
-        );
+        try {
+          await sendMessage(
+            rid,
+            "Не получилось законнектиться 😕\nПохоже, игрок выбрал другого. Попробуй ещё раз — сейчас точно найдёмся!",
+            await kbFor(rid)
+          );
+        } catch (e) {
+          console.error("Rejected responder notify failed:", rid, e?.response?.data || e?.message || e);
+        }
       }
     }
   }
@@ -511,17 +523,19 @@ function buildBot({ token, spreadsheetId, adminTgId, publicName }) {
       }
 
       const existing = await getResponse(requestId, tgId);
-      if (existing && existing.status === RESPONSE_STATUS.PENDING) {
-        await sendMessage(chatId, "Ты уже откликнулся. Ждём, кого выберут 👀", await kbFor(tgId));
-        return;
-      }
-      if (existing && existing.status === RESPONSE_STATUS.REJECTED) {
-        await sendMessage(chatId, "Твой прошлый отклик на этот запрос не прошёл. Выбери другой запрос.", await kbFor(tgId));
-        return;
-      }
-      if (existing && existing.status === RESPONSE_STATUS.ACCEPTED) {
-        await sendMessage(chatId, "Вы уже совпали по этому запросу ✅", await kbFor(tgId));
-        return;
+      if (existing) {
+        const createdAtMs = Date.parse(String(existing.created_at || ""));
+        if (Number.isFinite(createdAtMs)) {
+          const elapsed = Date.now() - createdAtMs;
+          if (elapsed < REPEAT_RESPONSE_COOLDOWN_MS) {
+            await sendMessage(
+              chatId,
+              "10 минут после прошлого отклика ещё не прошли. Попробуй позже.",
+              await kbFor(tgId)
+            );
+            return;
+          }
+        }
       }
 
       await createOrUpdateResponse(requestId, tgId, RESPONSE_STATUS.PENDING);
@@ -562,8 +576,12 @@ function buildBot({ token, spreadsheetId, adminTgId, publicName }) {
       await sendMessage(tgId, "Супер ✅ Матч найден!\nТвой напарник: " + responderLabel + "\nУдачной катки 🎮", await kbFor(tgId));
       await sendMessage(chosenResponderId, "Есть коннект ✅\nТы идёшь в кооп с: " + requesterLabel + "\nУдачной катки 🎮", await kbFor(chosenResponderId));
 
-      await notifyAdminMatch(tgId, chosenResponderId);
       await notifyRejectedResponders(requestId, chosenResponderId);
+      try {
+        await notifyAdminMatch(tgId, chosenResponderId);
+      } catch (e) {
+        console.error("Admin match notify failed:", e?.response?.data || e?.message || e);
+      }
       return;
     }
 
