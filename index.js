@@ -6,7 +6,8 @@ app.use(express.json());
 
 const TOKEN = process.env.TELEGRAM_TOKEN;
 if (!TOKEN) throw new Error("TELEGRAM_TOKEN env is required");
-
+const { sheetsAppendRow } = require("./sheets");
+const SPREADSHEET_ID = process.env.SPREADSHEET_ID;
 const TG = `https://api.telegram.org/bot${TOKEN}`;
 
 async function sendMessage(chatId, text, replyMarkup) {
@@ -74,6 +75,19 @@ app.post("/telegram", async (req, res) => {
         console.error("Webhook handler error:", e?.response?.data || e.message);
     }
 });
+
+
+app.get("/test-sheets", async (req, res) => {
+  try {
+    if (!SPREADSHEET_ID) throw new Error("SPREADSHEET_ID env is required");
+    await sheetsAppendRow(SPREADSHEET_ID, "Users!A:A", ["TEST", new Date().toISOString()]);
+    res.status(200).send("OK: appended");
+  } catch (e) {
+    console.error(e);
+    res.status(500).send("ERR: " + (e.message || e));
+  }
+});
+
 
 app.post("/", (req, res) => {
     res.status(200).send("OK");
