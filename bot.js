@@ -34,17 +34,22 @@ const CB = {
 function buildBot({ token, spreadsheetId, adminTgId, publicName }) {
   const TG = `https://api.telegram.org/bot${token}`;
   const SSID = spreadsheetId;
+  // Hardcoded destination for "someone requests coop" notifications.
+  // Set your supergroup id (e.g. -1001234567890) and forum topic id.
+  const COOP_NOTIFY_CHAT_ID = -1001234567890;
+  const COOP_NOTIFY_THREAD_ID = 1;
 
   async function tg(method, payload) {
     return axios.post(`${TG}/${method}`, payload);
   }
 
-  async function sendMessage(chatId, text, replyMarkup) {
+  async function sendMessage(chatId, text, replyMarkup, options = {}) {
     const payload = {
       chat_id: chatId,
       text,
       parse_mode: "HTML",
       disable_web_page_preview: true,
+      ...options,
     };
     if (replyMarkup) payload.reply_markup = replyMarkup;
     await tg("sendMessage", payload);
@@ -312,6 +317,20 @@ function buildBot({ token, spreadsheetId, adminTgId, publicName }) {
     );
   }
 
+  async function notifyAdminCoopRequest(requesterId) {
+    const u = await getUserBrief(requesterId);
+    const requesterLabel = String(
+      (u && (u.game_nick || u.name || u.username || u.tg_id)) || requesterId
+    ).trim();
+    await sendMessage(
+      COOP_NOTIFY_CHAT_ID,
+      "Уведомление: кто-то запрашивает кооп.\n" +
+        "Игрок: " + requesterLabel,
+      null,
+      { message_thread_id: COOP_NOTIFY_THREAD_ID }
+    );
+  }
+
   async function kbFor(tgId) {
     const u = await getUserBrief(tgId);
     const hasNick = !!(u && String(u.game_nick || "").trim());
@@ -454,6 +473,7 @@ function buildBot({ token, spreadsheetId, adminTgId, publicName }) {
       }
       const requestId = "R" + Date.now() + "_" + tgId;
       await createRequest(requestId, tgId);
+      await notifyAdminCoopRequest(tgId);
       await sendMessage(
         chatId,
         "Готово ✅ Ты в очереди на кооп.\nСокланы смогут откликнуться через «Ответить на кооп».",

@@ -26,6 +26,17 @@ app.post("/telegram", async (req, res) => {
 
   try {
     const update = req.body;
+    const msg = update.message || update.callback_query?.message;
+    if (msg?.chat?.id) {
+      console.log(
+        "[TG_DEBUG]",
+        JSON.stringify({
+          updateType: update.message ? "message" : update.callback_query ? "callback_query" : "other",
+          chatId: msg.chat.id,
+          threadId: msg.message_thread_id || null,
+        })
+      );
+    }
 
     if (update.message) await bot.handleMessage(update.message);
     else if (update.callback_query) await bot.handleCallback(update.callback_query);
